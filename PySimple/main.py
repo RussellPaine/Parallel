@@ -16,8 +16,8 @@ screenWidth, screenHeight = 100, 100
 image = np.zeros((screenWidth, screenHeight, 4), dtype=np.int)
 
 #Particle System
-numOfParticles = 500
-ColorType = 3
+numOfParticles = 100
+ColorType = 1
 systemSize = [100, 100, 100]
 systemPos = [50, 50, 50]
 systemXBounds = [systemPos[0] - systemSize[0] / 2, systemPos[0] + systemSize[0] / 2]
@@ -41,7 +41,7 @@ updateThreadStartEvents = []
 updateThreadEndEvents = []
 
 #Gravity Threading
-gravity = True
+gravity = False
 gravityStartEvent = threading.Event()
 gravityEndEvent = threading.Event()
 
@@ -51,7 +51,7 @@ glutStartEvent = threading.Event()
 glutEndEvent = threading.Event()
 
 def generateParticles():
-	#logging.info("Generating Particles Started")
+	logging.info("Generating Particles Started")
 	for _ in range(numOfParticles):
 		Particles.append(
 			[
@@ -68,9 +68,9 @@ def generateParticles():
 				]
 			] 
 		)
-	#logging.info("Generating Particles Finnished")
+	logging.info("Generating Particles Finnished")
 
-	#logging.info("Generating Update Threads Started")
+	logging.info("Generating Update Threads Started")
 	indexes = 0
 	for _ in range(numOfRaycastThreads):
 		startEvent = threading.Event()
@@ -81,17 +81,17 @@ def generateParticles():
 		updateThreads.append(thread)
 		indexes += int(numOfParticles / numOfUpdateThreads)
 		thread.start()
-	#logging.info("Generating Update Threads Finnished")
+	logging.info("Generating Update Threads Finnished")
 
 def generateRays():
-	#logging.info("Generating Rays Started")
+	logging.info("Generating Rays Started")
 	for i in range(screenWidth):
 		for j in range(screenHeight):
-			Rays.append([(i + 0.5) - cameraPos[0], (j + 0.5) - cameraPos[1], -cameraPos[0], i, j])
+			Rays.append([(i + 0.5) - cameraPos[0], (j + 0.5) - cameraPos[1], cameraPos[2], i, j])
 	pass
-	#logging.info("Generating Rays Finnished")
+	logging.info("Generating Rays Finnished")
 
-	#logging.info("Generating Ray Threads Started")
+	logging.info("Generating Ray Threads Started")
 	indexes = 0
 	for i in range(numOfRaycastThreads):
 		startEvent = threading.Event()
@@ -102,7 +102,7 @@ def generateRays():
 		raycastThreads.append(thread)
 		indexes += int(screenHeight * screenWidth / numOfRaycastThreads)
 		thread.start()
-	#logging.info("Generating Ray Threads Finnished")
+	logging.info("Generating Ray Threads Finnished")
 
 def NewColors():
 	for particle in Particles:
@@ -169,10 +169,8 @@ def updateSimulation(startIndex, endIndex, startEvent, endEvent):
 				#Center of Mass
 				Particles[i][6][0] = 0
 				Particles[i][6][1] = 0
-				Particles[i][6][2] = np.interp(np.sqrt(pow(Particles[i][0] - centerX, 2)+ pow(Particles[i][1] - centerY, 2) + pow(Particles[i][2] - centerZ, 2)), [0, 100], [255, 0])
-				
+				Particles[i][6][2] = np.interp(np.sqrt(pow(Particles[i][0] - centerX, 2)+ pow(Particles[i][1] - centerY, 2) + pow(Particles[i][2] - centerZ, 2)), [0, 100], [255, 0])	
 				pass
-
 			if Particles[i][0] >= systemXBounds[1]:
 				Particles[i][3] = -Particles[i][3]
 				Particles[i][0] = systemXBounds[1]
@@ -204,16 +202,16 @@ def apply_gravity():
 	while True:
 		gravityStartEvent.wait()
 		gravityStartEvent.clear()
-		#logging.info("Gravity Thread started")
+		logging.info("Gravity Thread started")
 		for particle in Particles:
 			particle[0] =  particle[0] + 10
-		#logging.info("Gravity Thread finished")
+		logging.info("Gravity Thread finished")
 		gravityEndEvent.set()
 
 def render(startIndex, endIndex, startEvent, endEvent):
 	while True:
 		startEvent.wait()
-		#logging.info("Raycast Thread started From Index: " + str(startIndex))
+		logging.info("Raycast Thread started From Index: " + str(startIndex))
 		startEvent.clear()
 		for i in range(startIndex, endIndex):
 			image[Rays[i][3], Rays[i][4], 0] = 0
@@ -221,18 +219,18 @@ def render(startIndex, endIndex, startEvent, endEvent):
 			image[Rays[i][3], Rays[i][4], 2] = 0
 			for obj in Particles:
 				oc = [cameraPos[0] - obj[0], cameraPos[1] - obj[1], cameraPos[2] - obj[2]]
-				if (2 * (oc[0] * Rays[i][0] + oc[1] * Rays[i][1] + oc[2] * Rays[i][2]))**2 - 4 * (Rays[i][0]**2 + Rays[i][1]**2 + Rays[i][2]**2) * ((oc[0]**2 + oc[1]**2 + oc[2]**2) - 10) >= 0:
+				if (2 * (oc[0] * Rays[i][0] + oc[1] * Rays[i][1] + oc[2] * Rays[i][2]))**2 - 4 * (Rays[i][0]**2 + Rays[i][1]**2 + Rays[i][2]**2) * ((oc[0]**2 + oc[1]**2 + oc[2]**2) - 5) >= 0:
 					image[Rays[i][3], Rays[i][4], 0] = obj[6][0]
 					image[Rays[i][3], Rays[i][4], 1] = obj[6][1]
 					image[Rays[i][3], Rays[i][4], 2] = obj[6][2]
 			pass
-		#logging.info("Raycast Thread finished From Index: " + str(startIndex))
+		logging.info("Raycast Thread finished From Index: " + str(startIndex))
 		endEvent.set()
 
 def displayCallback():
 	glutStartEvent.wait()
 	glutStartEvent.clear()
-	#logging.info("GlutLoop Started")
+	logging.info("GlutLoop Started")
 	gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 	gl.glLoadIdentity()
 	gl.glRasterPos2i(-1,  -1)
@@ -241,7 +239,7 @@ def displayCallback():
 	gl.glRasterPos2f(-0.9, 0.9)
 	glut.glutSwapBuffers()
 	glutStartEvent.clear()
-	#logging.info("GlutLoop Finnished")
+	logging.info("GlutLoop Finnished")
 	glutEndEvent.set()
 
 def reshapeCallback(width, height):
@@ -274,20 +272,20 @@ def keyboardCallback(key, x, y):
 	elif key == b'q':
 		exit()
 	elif key == b'g':
-		#logging.info("Toggled Gravity")
+		logging.info("Toggled Gravity")
 		gravity = not gravity
 	elif key == b'1':
-		#logging.info("Set Color Type To Block")
+		logging.info("Set Color Type To Block")
 		NewColors()
 		ColorType = 1
 	elif key == b'2':
-		#logging.info("Set Color Type To Velocity")
+		logging.info("Set Color Type To Velocity")
 		ColorType = 2
 	elif key == b'3':
-		#logging.info("Set Color Type To Total Force")
+		logging.info("Set Color Type To Total Force")
 		ColorType = 3
 	elif key == b'4':
-		#logging.info("Set Color Type To Center Proximity")
+		logging.info("Set Color Type To Center Proximity")
 		ColorType = 4
 
 def initGlut():
@@ -300,7 +298,7 @@ def initGlut():
 	glut.glutIdleFunc(displayCallback)
 	glut.glutReshapeFunc(reshapeCallback)
 	glut.glutKeyboardFunc(keyboardCallback)
-	#logging.info("Finished Setting Up Glut Loop")
+	logging.info("Finished Setting Up Glut Loop")
 	glut.glutMainLoop()
 
 

@@ -12,6 +12,9 @@
 #ifndef _BICUBICTEXTURE_CU_
 #define _BICUBICTEXTURE_CU_
 
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,37 +31,42 @@
 #include "hitable_list.h"
 #include "sphere.h"
 #include "vec3.h"
+#include "sphereTemplate.h"
+
+#define NumOfParticles 100
+
+hitable **d_world;
+sphere **d_list;
 
 typedef unsigned int uint;
 typedef unsigned char uchar;
 
-//Sphere X velocity
-__device__ static float sphereX = 1.1;
-//Sphere Y velocity
-__device__ static float sphereY = 0.11;
-//Sphere Z velocity
-__device__ static float sphereZ = 0.0;
-
-__device__ static float stepSizeX = 0.01;
-__device__ static float stepSizeY = 0.01;
-__device__ static float stepSizeZ = 0.00;
-
-//Sphere X velocity
-__device__ static float sphere2X = 1.1;
-//Sphere Y velocity
-__device__ static float sphere2Y = 0.11;
-//Sphere Z velocity
-__device__ static float sphere2Z = 0.0;
-
-__device__ static float stepSize2X = -0.01;
-__device__ static float stepSize2Y = -0.01;
-__device__ static float stepSize2Z = -0.00;
+__global__ void create_world(sphere **d_list, hitable **d_world, sphereTemplate *particleList);
 
 __device__ vec3 castRay(const ray &r, hitable **world);
-__global__ void create_world(hitable **d_list, hitable **d_world);
+__global__ void move_particles(hitable **world);
 //#include "bicubicTexture_kernel.cuh"
 
 cudaArray *d_imageArray = 0;
+
+extern "C" void initParticles() {
+
+	srand (static_cast <unsigned> (time(0)));
+
+	sphereTemplate particleList[NumOfParticles];
+
+	sphereTemplate *d_particleList;
+	checkCudaErrors(cudaMalloc((void **)&d_particleList,  NumOfParticles * sizeof(tempSphere)));
+	checkCudaErrors(cudaMemcpy(d_particleList, particleList, NumOfParticles *  sizeof(tempSphere), cudaMemcpyHostToDevice));
+
+	checkCudaErrors(cudaMalloc((void **)&d_list, NumOfParticles * sizeof(sphere *)));
+	checkCudaErrors(cudaMalloc((void **)&d_world, sizeof(hitable *)));
+
+	create_world<<<1, 1>>>(d_list, d_world, d_particleList);
+
+	checkCudaErrors(cudaGetLastError());
+	checkCudaErrors(cudaDeviceSynchronize());
+}
 
 extern "C" void initTexture(int imageWidth, int imageHeight, uchar *h_data)
 {
@@ -72,8 +80,7 @@ extern "C" void freeTexture()
     checkCudaErrors(cudaFreeArray(d_imageArray));
 }
 
-__global__ void
-d_render(uchar4 *d_output, uint width, uint height, hitable **d_world)
+__global__ void d_render(uchar4 *d_output, uint width, uint height, hitable **d_world)
 {
     uint x = blockIdx.x * blockDim.x + threadIdx.x;
     uint y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -87,7 +94,7 @@ d_render(uchar4 *d_output, uint width, uint height, hitable **d_world)
     v *= 2.0;
     vec3 eye = vec3(0, 0.5, 1.5);
     float distFrEye2Img = 1.0;
-    ;
+
     if ((x < width) && (y < height))
     {
         //for each pixel
@@ -104,139 +111,70 @@ d_render(uchar4 *d_output, uint width, uint height, hitable **d_world)
     }
 }
 
+
+
 // render image using CUDA
 extern "C" void render(int width, int height, dim3 blockSize, dim3 gridSize, uchar4 *output)
 {
-    /*d_render << <gridSize, blockSize >> > (output, width, height);
-     // call CUDA kernel, writing results to PBO memory
-     getLastCudaError("kernel failed");*/
 
-    // make our world of hitables
-    hitable **d_list;
-    checkCudaErrors(cudaMalloc((void **)&d_list, 2 * sizeof(hitable *)));
-    hitable **d_world;
-    checkCudaErrors(cudaMalloc((void **)&d_world, sizeof(hitable *)));
-    create_world<<<1, 1>>>(d_list, d_world);
-    checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaDeviceSynchronize());
-    d_render<<<gridSize, blockSize>>>(output, width, height, d_world);
-    getLastCudaError("kernel failed");
+
+//    hitable_list *d_world =  new hitable_list();
+//    d_world->list_size = NumOfParticles;
+//
+//    checkCudaErrors(cudaMalloc((void **)&d_world, NumOfParticles * sizeof(hitable)));
+
+
+//    sphere *d_particleList;
+//    checkCudaErrors(cudaMalloc((void **)&d_particleList,  NumOfParticles * sizeof(sphere)));
+//    checkCudaErrors(cudaMemcpy(d_particleList, particleList, NumOfParticles *  sizeof(sphere), cudaMemcpyHostToDevice));
+//
+//    move_particles <<< 1, NumOfParticles >>> (d_particleList);
+//
+//    hitable_list *d_world;
+//	checkCudaErrors(cudaMalloc((void **)&d_world,  sizeof(hitable_list)));
+//	checkCudaErrors(cudaMemcpy(d_world, new hitable_list(d_particleList, NumOfParticles), sizeof(hitable_list), cudaMemcpyHostToDevice));
+//
+//
+
+
+
+
+	move_particles <<< 1, NumOfParticles >>> (d_world);
+	checkCudaErrors(cudaGetLastError());
+	checkCudaErrors(cudaDeviceSynchronize());
+////    // [32,32] [16,16]
+	d_render <<< gridSize, blockSize >>> (output, width, height, d_world);
+	getLastCudaError("kernel failed");
 }
 
-void check_cuda(cudaError_t result, char const *const func, const char *const file, int const line)
+
+__global__ void create_world(sphere **d_list, hitable **d_world, sphereTemplate *particleList)
 {
-    if (result)
-    {
-        std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << "at " << file << ":" << line << " '" << func << "' \n";
-        // Make sure we call CUDA Device Reset before exiting
-        cudaDeviceReset();
-        exit(99);
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+    	for (int i = 0; i < NumOfParticles; i++) {
+    		*(d_list + i) = new sphere(particleList[i].center, particleList[i].veloctiy, particleList[i].color, particleList[i].radius);
+		}
+    	*d_world = new hitable_list(d_list, NumOfParticles);
     }
 }
+
 __device__ vec3 castRay(const ray &r, hitable **world)
 {
     hit_record rec;
     if ((*world)->hit(r, 0.0, FLT_MAX, rec))
     {
-        return 0.5f * vec3(rec.normal.x() + 1.0f, rec.normal.y() + 1.0f,
-                           rec.normal.z() + 1.0f);
+        return rec.color;
     }
     else
     {
-        vec3 unit_direction = unit_vector(r.direction());
-        float t = 0.5f * (unit_direction.y() + 1.0f);
-        return (1.0f - t) * vec3(1.0, 1.0, 1.0) + t * vec3(0.5, 0.7, 1.0);
+        return vec3(0, 0, 0);
     }
 }
-__global__ void create_world(hitable **d_list, hitable **d_world)
+
+__global__ void move_particles(hitable **world)
 {
-    if (threadIdx.x == 0 && blockIdx.x == 0)
-    {
-
-        //Sphere
-        //Static Ball*(d_list) = new sphere(vec3(0, 0, -1), 0.5);
-
-        sphereX += stepSizeX;
-        sphereY += stepSizeY;
-        sphereZ += stepSizeZ;
-        if (sphereX > 1.8)
-        {
-            stepSizeX = -0.01;
-        }
-        if (sphereY > 1.8)
-        {
-            stepSizeY = -0.01;
-        }
-        if (sphereZ > 1.8)
-        {
-            stepSizeZ = -0.01;
-        }
-
-        if (sphereX < -1.8)
-        {
-            stepSizeX = 0.01;
-        }
-        if (sphereY < -1.8)
-        {
-            stepSizeY = 0.01;
-        }
-        if (sphereZ < -1.8)
-        {
-            stepSizeZ = 0.01;
-        }
-
-        sphere2X += stepSize2X;
-        sphere2Y += stepSize2Y;
-        sphere2Z += stepSize2Z;
-        if (sphere2X > 1.8)
-        {
-            stepSize2X = -0.01;
-        }
-        if (sphere2Y > 1.8)
-        {
-            stepSize2Y = -0.01;
-        }
-        if (sphere2Z > 1.8)
-        {
-            stepSize2Z = -0.01;
-        }
-
-        if (sphere2X < -1.8)
-        {
-            stepSize2X = 0.01;
-        }
-        if (sphere2Y < -1.8)
-        {
-            stepSize2Y = 0.01;
-        }
-        if (sphere2Z < -1.8)
-        {
-            stepSize2Z = 0.01;
-        }
-
-        *(d_list) = new sphere(vec3(sphereX, sphereY, sphereZ), 0.2);
-
-        *(d_list + 1) = new sphere(vec3(sphere2X, sphere2Y, sphere2Z), 0.2);
-
-        //Left Wall
-        *(d_list + 2) = new sphere(vec3(-10002.0, 0, -3), 10000);
-        //Right Wall
-        *(d_list + 3) = new sphere(vec3(10002.0, 0, -3), 10000);
-        //Top Wall
-        *(d_list + 4) = new sphere(vec3(0, 10002.0, -3), 10000);
-        //Bottom Wall
-        *(d_list + 5) = new sphere(vec3(0, -10002.0, -3), 10000);
-        //Back Wall
-        *(d_list + 6) = new sphere(vec3(0, 0, -10002.0), 10000);
-
-        *d_world = new hitable_list(d_list, 7);
-    }
-}
-__global__ void free_world(hitable **d_list, hitable **d_world)
-{
-    delete *(d_list);
-    delete *(d_list + 1);
-    delete *d_world;
+    int i = threadIdx.x;
+    (*world)->update(i);
 }
 
 #endif
