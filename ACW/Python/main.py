@@ -16,7 +16,7 @@ screenWidth, screenHeight = 100, 100
 image = np.zeros((screenWidth, screenHeight, 4), dtype=np.int)
 
 #Particle System
-numOfParticles = 100
+numOfParticles = 16
 ColorType = 1
 systemSize = [100, 100, 100]
 systemPos = [50, 50, 50]
@@ -132,7 +132,7 @@ def updateSimulation(startIndex, endIndex, startEvent, endEvent):
 		for p1 in range(startIndex, endIndex):
 			for p2 in Particles:
 				if Particles[p1] == p2: continue
-				if (Particles[p1][0] - p2[0])**2 + (Particles[p1][1] - p2[1])**2  + (Particles[p1][2] - p2[2])**2 < 2:
+				if (Particles[p1][0] - p2[0])**2 + (Particles[p1][1] - p2[1])**2  + (Particles[p1][2] - p2[2])**2 < 0.1:
 						v1 = np.array((Particles[p1][3], Particles[p1][4], Particles[p1][5]))
 						v2 = np.array((p2[3], p2[4], p2[5]))
 						d = np.array((Particles[p1][0], Particles[p1][1], Particles[p1][2])) - np.array((p2[0], p2[1], p2[2]))

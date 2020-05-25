@@ -34,7 +34,7 @@
 #define NumOfParticles 10000
 #define systemBounds vec3(10, 10, 10)
 
-const int ThreadsPerBlock = 1000;
+const int ThreadsPerBlock = 100;
 const int blocks = NumOfParticles / ThreadsPerBlock;
 
 __device__ int colorType = 1;
